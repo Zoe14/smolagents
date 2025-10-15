@@ -1305,6 +1305,28 @@ class ToolCallingAgent(MultiStepAgent):
             # Record model output
             memory_step.model_output_message = chat_message
             memory_step.model_output = chat_message.content
+
+            # Check for problematic stop reasons
+            if chat_message.finish_reason:
+                if chat_message.finish_reason == "length":
+                    raise AgentGenerationError(
+                        "Model generation stopped due to length limit. This may indicate the response was truncated. "
+                        "Consider increasing max_tokens or breaking down the task into smaller parts.",
+                        self.logger,
+                    )
+                elif chat_message.finish_reason == "content_filter":
+                    raise AgentGenerationError(
+                        "Model generation stopped due to content filter. The model's response was filtered. "
+                        "Please try rephrasing your request or using a different approach.",
+                        self.logger,
+                    )
+                elif chat_message.finish_reason not in ["stop", "tool_calls"]:
+                    # Log warning for other stop reasons but don't fail
+                    self.logger.log(
+                        f"Model generation stopped with reason: {chat_message.finish_reason}",
+                        level=LogLevel.WARNING,
+                    )
+
             memory_step.token_usage = chat_message.token_usage
         except Exception as e:
             raise AgentGenerationError(f"Error while generating output:\n{e}", self.logger) from e
@@ -1674,6 +1696,27 @@ class CodeAgent(MultiStepAgent):
                 if output_text and not output_text.strip().endswith(self.code_block_tags[1]):
                     output_text += self.code_block_tags[1]
                     memory_step.model_output_message.content = output_text
+
+            # Check for problematic stop reasons
+            if chat_message.finish_reason:
+                if chat_message.finish_reason == "length":
+                    raise AgentGenerationError(
+                        "Model generation stopped due to length limit. This may indicate the response was truncated. "
+                        "Consider increasing max_tokens or breaking down the task into smaller parts.",
+                        self.logger,
+                    )
+                elif chat_message.finish_reason == "content_filter":
+                    raise AgentGenerationError(
+                        "Model generation stopped due to content filter. The model's response was filtered. "
+                        "Please try rephrasing your request or using a different approach.",
+                        self.logger,
+                    )
+                elif chat_message.finish_reason not in ["stop", "tool_calls"]:
+                    # Log warning for other stop reasons but don't fail
+                    self.logger.log(
+                        f"Model generation stopped with reason: {chat_message.finish_reason}",
+                        level=LogLevel.WARNING,
+                    )
 
             memory_step.token_usage = chat_message.token_usage
             memory_step.model_output = output_text

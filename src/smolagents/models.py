@@ -108,6 +108,7 @@ class ChatMessage:
     tool_calls: list[ChatMessageToolCall] | None = None
     raw: Any | None = None  # Stores the raw output from the API
     token_usage: TokenUsage | None = None
+    finish_reason: str | None = None  # Reason why the model stopped generating
 
     def model_dump_json(self):
         return json.dumps(get_dict_from_nested_dataclasses(self, ignore_key="raw"))
@@ -128,6 +129,7 @@ class ChatMessage:
             tool_calls=data.get("tool_calls"),
             raw=raw,
             token_usage=token_usage,
+            finish_reason=data.get("finish_reason"),
         )
 
     def dict(self):
@@ -1184,8 +1186,14 @@ class LiteLLMModel(ApiModel):
                 " This may indicate a possible API or upstream issue. "
                 f"Response details: {response.model_dump()}"
             )
+        choice = response.choices[0]
+        message_data = choice.message.model_dump(include={"role", "content", "tool_calls"})
+        finish_reason = getattr(choice, "finish_reason", None)
+        if finish_reason:
+            message_data["finish_reason"] = finish_reason
+
         return ChatMessage.from_dict(
-            response.choices[0].message.model_dump(include={"role", "content", "tool_calls"}),
+            message_data,
             raw=response,
             token_usage=TokenUsage(
                 input_tokens=response.usage.prompt_tokens,
@@ -1459,8 +1467,14 @@ class InferenceClientModel(ApiModel):
         )
         self._apply_rate_limit()
         response = self.client.chat_completion(**completion_kwargs)
+        choice = response.choices[0]
+        message_data = asdict(choice.message)
+        finish_reason = getattr(choice, "finish_reason", None)
+        if finish_reason:
+            message_data["finish_reason"] = finish_reason
+
         return ChatMessage.from_dict(
-            asdict(response.choices[0].message),
+            message_data,
             raw=response,
             token_usage=TokenUsage(
                 input_tokens=response.usage.prompt_tokens,
@@ -1652,8 +1666,14 @@ class OpenAIServerModel(ApiModel):
         )
         self._apply_rate_limit()
         response = self.client.chat.completions.create(**completion_kwargs)
+        choice = response.choices[0]
+        message_data = choice.message.model_dump(include={"role", "content", "tool_calls"})
+        finish_reason = getattr(choice, "finish_reason", None)
+        if finish_reason:
+            message_data["finish_reason"] = finish_reason
+
         return ChatMessage.from_dict(
-            response.choices[0].message.model_dump(include={"role", "content", "tool_calls"}),
+            message_data,
             raw=response,
             token_usage=TokenUsage(
                 input_tokens=response.usage.prompt_tokens,

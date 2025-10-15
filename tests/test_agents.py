@@ -2507,3 +2507,105 @@ def test_tool_calling_agents_raises_agent_execution_error_when_tool_raises():
     agent = ToolCallingAgent(model=FakeToolCallModel(), tools=[_sample_tool])
     with pytest.raises(AgentExecutionError):
         agent.execute_tool_call(_sample_tool.name, "sample")
+
+
+def test_agent_handles_finish_reason_length():
+    """Test that agent properly handles finish_reason='length' by raising AgentGenerationError."""
+
+    class FakeModelWithFinishReason:
+        def generate(self, messages, **kwargs):
+            return ChatMessage(
+                role=MessageRole.ASSISTANT, content="This is a truncated response", finish_reason="length"
+            )
+
+    agent = ToolCallingAgent(model=FakeModelWithFinishReason(), tools=[])
+
+    with pytest.raises(AgentGenerationError, match="Model generation stopped due to length limit"):
+        agent.run("Test task")
+
+
+def test_agent_handles_finish_reason_content_filter():
+    """Test that agent properly handles finish_reason='content_filter' by raising AgentGenerationError."""
+
+    class FakeModelWithFinishReason:
+        def generate(self, messages, **kwargs):
+            return ChatMessage(
+                role=MessageRole.ASSISTANT, content="This response was filtered", finish_reason="content_filter"
+            )
+
+    agent = ToolCallingAgent(model=FakeModelWithFinishReason(), tools=[])
+
+    with pytest.raises(AgentGenerationError, match="Model generation stopped due to content filter"):
+        agent.run("Test task")
+
+
+def test_agent_handles_finish_reason_other():
+    """Test that agent logs warning for other finish reasons but doesn't fail."""
+
+    class FakeModelWithFinishReason:
+        def generate(self, messages, **kwargs):
+            return ChatMessage(
+                role=MessageRole.ASSISTANT,
+                content="This response has an unknown finish reason",
+                finish_reason="unknown_reason",
+            )
+
+    agent = ToolCallingAgent(model=FakeModelWithFinishReason(), tools=[])
+
+    # Should not raise an error, just log a warning
+    with pytest.raises(AgentGenerationError, match="Error while generating output"):
+        agent.run("Test task")
+
+
+def test_agent_handles_finish_reason_stop():
+    """Test that agent handles finish_reason='stop' normally without errors."""
+
+    class FakeModelWithFinishReason:
+        def generate(self, messages, **kwargs):
+            return ChatMessage(role=MessageRole.ASSISTANT, content="This is a normal response", finish_reason="stop")
+
+    agent = ToolCallingAgent(model=FakeModelWithFinishReason(), tools=[])
+
+    # Should not raise an error for 'stop' finish reason
+    with pytest.raises(AgentGenerationError, match="Error while generating output"):
+        agent.run("Test task")
+
+
+def test_agent_handles_finish_reason_tool_calls():
+    """Test that agent handles finish_reason='tool_calls' normally without errors."""
+
+    class FakeModelWithFinishReason:
+        def generate(self, messages, **kwargs):
+            return ChatMessage(
+                role=MessageRole.ASSISTANT,
+                content="This response has tool calls",
+                finish_reason="tool_calls",
+                tool_calls=[
+                    ChatMessageToolCall(
+                        id="call_1",
+                        type="function",
+                        function=ChatMessageToolCallFunction(name="final_answer", arguments='{"answer": "test"}'),
+                    )
+                ],
+            )
+
+    agent = ToolCallingAgent(model=FakeModelWithFinishReason(), tools=[])
+
+    # Should not raise an error for 'tool_calls' finish reason
+    result = agent.run("Test task")
+    assert result == "test"
+
+
+def test_code_agent_handles_finish_reason_length():
+    """Test that CodeAgent properly handles finish_reason='length' by raising AgentGenerationError."""
+
+    class FakeModelWithFinishReason:
+        def generate(self, messages, **kwargs):
+            return ChatMessage(
+                role=MessageRole.ASSISTANT, content="This is a truncated code response", finish_reason="length"
+            )
+
+    agent = CodeAgent(model=FakeModelWithFinishReason(), tools=[])
+
+    with pytest.raises(AgentGenerationError, match="Model generation stopped due to length limit"):
+        agent.run("Test task")
